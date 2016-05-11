@@ -1,0 +1,103 @@
+' Macro for emailing your calendar in Outlook every day
+' create macro, paste this code, editing your destination email address.
+' Outlook can run the macro in response to receiving an email (create rule)
+' so I have a sendmail cron job executing on a linux server to trigger the macro
+' by emailing myself a formatted subject
+
+Public Sub MailTodaysAppts(item As Outlook.MailItem)
+  Call MailAnyDaysAppts(Date + 1)
+End Sub
+ 
+Sub MailAnyDaysAppts(dteDate As Date)
+  Dim objApp As Outlook.Application
+  Dim objNS As Outlook.NameSpace
+  Dim colCal As Outlook.Items
+  Dim strFind As String
+  Dim colMyAppts As Outlook.Items
+  Dim objAppt As Outlook.AppointmentItem
+  Dim objMsg As Outlook.MailItem
+  Dim strHTML As String
+   
+  ' start HTML for message
+  strHTML = "<html><body><p>Here are my appointments for " & _
+            FormatDateTime(dteDate, vbLongDate) & _
+            ":</p><table>"
+   
+  Set objApp = CreateObject("Outlook.Application")
+  Set objNS = Application.GetNamespace("MAPI")
+  Set colCal = objNS.GetDefaultFolder(olFolderCalendar).Items
+  colCal.Sort "[Start]"
+  colCal.IncludeRecurrences = True
+  
+  ' get appointments spanning date
+  strFind = "[Start] < " & _
+            Quote(Format(dteDate, "dd mmm yyyy") & " 12:00 AM") & _
+            " AND [End] > " & _
+            Quote(Format(dteDate, "dd mmm yyyy") & " 12:00 AM")
+  Debug.Print strFind
+  Set colMyAppts = colCal.Restrict(strFind)
+  For Each objAppt In colMyAppts
+    strHTML = strHTML & AddApptRow(objAppt)
+  Next
+  Set colMyAppts = Nothing
+   
+  ' get appointments starting on date
+  strFind = "[Start] >= " & _
+            Quote(Format(dteDate, "dd mmm yyyy") & " 12:00 AM") & _
+            " AND [Start] < " & _
+            Quote(Format(dteDate + 1, "dd mmm yyyy") & " 12:00 AM")
+  Debug.Print strFind
+  Set colMyAppts = colCal.Restrict(strFind)
+  For Each objAppt In colMyAppts
+    strHTML = strHTML & AddApptRow(objAppt)
+  Next
+   
+  ' create new message
+  Set objMsg = objApp.CreateItem(olMailItem)
+  With objMsg
+    .BodyFormat = olFormatHTML
+    .To = "youremail@domain.com"
+    .Subject = "Appointments for " & _
+               FormatDateTime(dteDate, vbLongDate)
+    .HTMLBody = strHTML & "</table></body></html>"
+  ' send or display
+    .Send
+  End With
+ 
+  Set objApp = Nothing
+  Set objNS = Nothing
+  Set colCal = Nothing
+  Set colMyAppts = Nothing
+  Set objAppt = Nothing
+End Sub
+  
+Function AddApptRow(objAppt As Outlook.AppointmentItem) As String
+  Dim strRow As String
+  strRow = "<tr><td valign=" & Quote("top") & _
+           "width=" & Quote("100") & "><b>"
+  If objAppt.AllDayEvent = True Then
+    strRow = strRow & "All day"
+  Else
+    strRow = strRow & _
+             FormatDateTime(objAppt.Start, vbShortTime) & _
+             " - " & FormatDateTime(objAppt.End, vbShortTime)
+  End If
+  strRow = strRow & "</b></td><td valign=" & Quote("top") & "><b>" & _
+           objAppt.Subject & "</b>"
+  If objAppt.Location <> "" Then
+    strRow = strRow & " (" & _
+             objAppt.Location & ")"
+  End If
+  strRow = strRow & "<br><br>"
+  If objAppt.Body <> "" Then
+    strRow = strRow & "<pre>" & objAppt.Body & "</pre><br><br>"
+  End If
+  strRow = strRow & "</td></tr>"
+  AddApptRow = strRow
+End Function
+
+Function Quote(MyText)
+    Quote = Chr(34) & MyText & Chr(34)
+End Function
+
+
